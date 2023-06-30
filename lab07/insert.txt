@@ -1,0 +1,245 @@
+SET IDENTITY_INSERT STROZIK.DIM_CUSTOMER ON
+INSERT INTO 
+	STROZIK.DIM_CUSTOMER (
+    CustomerID,
+    FirstName,
+    LastName,
+    Title,
+    City,
+    TerritoryName,
+    CountryRegionCode,
+    [Group]
+)
+SELECT
+	DISTINCT C.CustomerID,
+	P.FirstName, 
+	P.LastName, 
+	P.Title, 
+	A.City, 
+	T.[Name], 
+	T.CountryRegionCode, 
+	T.[Group]
+FROM Sales.Customer C JOIN Person.Person P on C.PersonId = P.BusinessEntityID
+ JOIN Sales.SalesTerritory T on C.TerritoryID = T.TerritoryID
+ JOIN Sales.SalesOrderHeader H on C.CustomerID = H.CustomerID
+ JOIN Person.Address A on A.AddressID=H.ShipToAddressID
+SET IDENTITY_INSERT STROZIK.DIM_CUSTOMER OFF;
+
+INSERT INTO 
+	STROZIK.DIM_PRODUCT
+SELECT 
+    p.ProductID, 
+	p.Name, 
+	p.ListPrice, 
+	p.Color, 
+	sc.Name, 
+    c.Name,
+	p.Weight, 
+	p.Size, 
+	~p.MakeFlag
+FROM Production.Product p
+LEFT JOIN Production.ProductSubcategory sc ON p.ProductSubcategoryID = sc.ProductSubcategoryID
+LEFT JOIN Production.ProductCategory c ON sc.ProductCategoryID = c.ProductCategoryID;
+
+INSERT INTO STROZIK.DIM_SALESPERSON
+SELECT SP.BusinessEntityID, FirstName, LastName, Title, Gender, CountryRegionCode, [Group]
+FROM Sales.SalesPerson SP
+JOIN HumanResources.Employee E ON E.BusinessEntityID = SP.BusinessEntityID
+JOIN Person.Person P ON E.BusinessEntityID = P.BusinessEntityID
+LEFT JOIN Sales.SalesTerritory st ON sp.TerritoryID = st.TerritoryID;
+
+
+INSERT INTO STROZIK.FACT_SALES
+SELECT 
+	DISTINCT
+	SOD.ProductID,
+	SOH.CustomerID,
+	SOH.SalesPersonID,
+	YEAR(SOH.OrderDate) * 10000 + MONTH(SOH.OrderDate) * 100 + DAY(SOH.OrderDate),
+	YEAR(SOH.ShipDate) * 10000 + MONTH(SOH.ShipDate) * 100 + DAY(SOH.ShipDate),
+	SOD.OrderQty,
+	SOD.UnitPrice,
+	SOD.UnitPriceDiscount,
+	SOD.LineTotal
+FROM Sales.SalesOrderHeader SOH
+LEFT JOIN Sales.SalesOrderDetail SOD ON SOD.SalesOrderID = SOH.SalesOrderID;
+
+INSERT INTO STROZIK.DIM_TIME
+SELECT DISTINCT
+	YEAR(SOH.OrderDate) * 10000 + MONTH(SOH.OrderDate) * 100 + DAY(SOH.OrderDate) AS PK_TIME,
+    YEAR(SOH.OrderDate) AS Rok,
+    DATEPART(Q, SOH.OrderDate) AS Kwartal,
+    MONTH(SOH.OrderDate) AS Miesiac,
+	mn.month_name AS Miesiac_slownie,
+	wdn.day_name AS Dzien_tyg_slownie,
+    DAY(SOH.OrderDate) AS Dzien_miesiaca
+FROM Sales.SalesOrderHeader SOH 
+	JOIN STROZIK.weekday_names wdn 
+	ON DATEPART(DW, OrderDate) = wdn.weekday_number
+	JOIN STROZIK.months_names mn
+	ON MONTH(OrderDate) = mn.month_number;
+
+UPDATE STROZIK.DIM_PRODUCT
+SET Color = 'Unknown'
+WHERE Color IS NULL;
+
+UPDATE STROZIK.DIM_PRODUCT
+SET SubCategoryName = 'Unknown'
+WHERE SubCategoryName IS NULL;
+
+UPDATE STROZIK.DIM_CUSTOMER
+SET CountryRegionCode = '000'
+WHERE CountryRegionCode IS NULL;
+
+UPDATE STROZIK.DIM_SALESPERSON
+SET CountryRegionCode = '000'
+WHERE CountryRegionCode IS NULL;
+
+UPDATE STROZIK.DIM_CUSTOMER
+SET [Group] = 'Unknown'
+WHERE [Group] IS NULL;
+
+UPDATE STROZIK.DIM_SALESPERSON
+SET [Group] = 'Unknown'
+WHERE [Group] IS NULL;
+
+
+
+
+
+
+ALTER TABLE STROZIK.DIM_CUSTOMER ADD PRIMARY KEY (CustomerID);
+ALTER TABLE STROZIK.DIM_PRODUCT ADD PRIMARY KEY (ProductID);
+ALTER TABLE STROZIK.DIM_SALESPERSON ADD PRIMARY KEY (SalesPersonID);
+
+
+ALTER TABLE STROZIK.DIM_CUSTOMER ADD 
+	FOREIGN KEY (CountryRegionCode) REFERENCES Person.CountryRegion(CountryRegionCode),
+	FOREIGN KEY (CustomerID) REFERENCES Sales.Customer(CustomerID)
+;
+
+ALTER TABLE STROZIK.DIM_SALESPERSON ADD 
+	FOREIGN KEY (CountryRegionCode) REFERENCES Person.CountryRegion(CountryRegionCode),
+	FOREIGN KEY (SalesPersonID) REFERENCES Sales.SalesPerson(BusinessEntityID)
+;
+
+ALTER TABLE STROZIK.DIM_PRODUCT ADD FOREIGN KEY (ProductID) REFERENCES Production.Product(ProductID);
+
+
+
+ALTER TABLE STROZIK.DIM_CUSTOMER
+ADD CONSTRAINT PK_CustomerID PRIMARY KEY CLUSTERED(CustomerID);
+
+ALTER TABLE STROZIK.DIM_PRODUCT
+ADD CONSTRAINT PK_ProductID PRIMARY KEY CLUSTERED(ProductID);
+
+ALTER TABLE STROZIK.DIM_SALESPERSON
+ADD CONSTRAINT PK_SalesPersonID PRIMARY KEY CLUSTERED(SalesPersonID);
+
+ALTER TABLE STROZIK.FACT_SALES
+ADD CONSTRAINT FK_ProductID FOREIGN KEY (ProductID) REFERENCES STROZIK.DIM_PRODUCT(ProductID);
+
+ALTER TABLE STROZIK.FACT_SALES
+ADD CONSTRAINT FK_CustomerID FOREIGN KEY (CustomerID) REFERENCES STROZIK.DIM_CUSTOMER(CustomerID);
+
+ALTER TABLE STROZIK.FACT_SALES
+ADD CONSTRAINT FK_SalesPersonID FOREIGN KEY (SalesPersonID) REFERENCES STROZIK.DIM_SALESPERSON(SalesPersonID);
+
+
+ALTER TABLE STROZIK.FACT_SALES
+ADD CONSTRAINT FK_TIMEID FOREIGN KEY (OrderDate) REFERENCES STROZIK.DIM_TIME(PK_TIME);
+
+
+
+
+
+
+
+
+
+-- z2
+CREATE TABLE STROZIK.DIM_CUSTOMER(
+	CustomerID			INT				NOT NULL,
+	FirstName			NVARCHAR(50),
+	LastName			NVARCHAR(50),
+	Title				NVARCHAR(50),
+	City				NVARCHAR(100),
+	TerritoryName		NVARCHAR(50),
+	CountryRegionCode	NVARCHAR(3),
+	"Group"				NVARCHAR(50)
+);
+
+CREATE TABLE STROZIK.DIM_PRODUCT(
+	ProductID			INT				NOT NULL,
+	"Name"				NVARCHAR(50)		NOT NULL,
+	ListPrice			MONEY			NOT NULL,
+	Color				NVARCHAR(15),
+	SubCategoryName		NVARCHAR(50),
+	CategoryName		NVARCHAR(50),
+	"Weight"			DECIMAL(8, 2),
+	Size				NVARCHAR(5),
+	IsPurchased			BIT
+);
+
+CREATE TABLE STROZIK.DIM_SALESPERSON(
+	SalesPersonID		INT				NOT NULL,
+	FirstName			NVARCHAR(50)	NOT NULL,
+	LastName			NVARCHAR(50)	NOT NULL,
+	Title				NVARCHAR(8),
+	Gender				NCHAR(1)		NOT NULL,
+	CountryRegionCode	NVARCHAR(3),
+	"Group"				NVARCHAR(50)
+);
+
+CREATE TABLE STROZIK.FACT_SALES(
+	ProductID			INT				NOT NULL,
+	CustomerID			INT				NOT NULL,
+	SalesPersonID		INT,
+	OrderDate			INT				NOT NULL,
+	ShipDate			INT				NOT NULL,
+	OrderQty			INT				NOT NULL,
+	UnitPrice			MONEY			NOT NULL,
+	UnitPriceDiscount	MONEY			NOT NULL,
+	LineTotal			NUMERIC(38, 6)	NOT NULL
+);
+
+
+-- z2
+CREATE TABLE STROZIK.MONHTS(
+	MonthNumber		INT				PRIMARY KEY,
+	MonthName		NVARCHAR(31)	NOT NULL
+);
+CREATE TABLE STROZIK.DAYS(
+	DayNumber		INT			PRIMARY KEY,
+	DayName			NVARCHAR(31)	NOT NULL
+);
+
+CREATE TABLE STROZIK.DIM_TIME (
+    PK_TIME				INT			PRIMARY KEY,
+    Rok					INT,
+    Kwartal				INT,
+    Miesiac				INT,
+    Miesiac_slownie		NVARCHAR(31),
+    Dzien_tyg_slownie	NVARCHAR(31),
+	Dzien_miesiaca		INT
+);
+
+
+
+ALTER TABLE STROZIK.DIM_CUSTOMER ADD PRIMARY KEY (CustomerID);
+ALTER TABLE STROZIK.DIM_PRODUCT ADD PRIMARY KEY (ProductID);
+ALTER TABLE STROZIK.DIM_SALESPERSON ADD PRIMARY KEY (SalesPersonID);
+
+ALTER TABLE STROZIK.DIM_CUSTOMER ADD 
+	FOREIGN KEY (CountryRegionCode) REFERENCES Person.CountryRegion(CountryRegionCode),
+	FOREIGN KEY (CustomerID) REFERENCES Sales.Customer(CustomerID)
+;
+
+ALTER TABLE STROZIK.DIM_SALESPERSON ADD 
+	FOREIGN KEY (CountryRegionCode) REFERENCES Person.CountryRegion(CountryRegionCode),
+	FOREIGN KEY (SalesPersonID) REFERENCES Sales.SalesPerson(BusinessEntityID)
+;
+
+ALTER TABLE STROZIK.DIM_PRODUCT ADD FOREIGN KEY (ProductID) REFERENCES Production.Product(ProductID);
+
+
